@@ -1,0 +1,112 @@
+# Partner Management — local Docker compose.
+#
+# Not shipped by the repo (it is Helm-only upstream), so this file is written for
+# the openg2p-developer local stack: it reuses that stack's Postgres and Keycloak
+# by joining its network, and keeps its own compose project.
+#
+#   docker compose -p partner-management up -d --build
+#
+# Ports chosen to avoid everything already bound:
+#   8050 partner-api (public key fetch)   8051 staff-portal-api (admin)   3003 UI
+#
+# The `commons-services-pm-partner-api` alias matches the upstream Helm service
+# name, so other modules' default config values resolve without changes.
+
+services:
+  partner-api:
+    build:
+      context: .
+      dockerfile: docker/partner-api/Dockerfile
+      args:
+        # PM does NOT import openg2p_fastapi_common.utils.crypto, so the 1.2
+        # layout change that breaks Consent Manager is harmless here.
+        FASTAPI_COMMON_REF: "1.2"
+    container_name: pm-partner-api
+    environment:
+      PARTNER_MANAGER_DB_HOSTNAME: postgres
+      PARTNER_MANAGER_DB_PORT: "5432"
+      PARTNER_MANAGER_DB_USERNAME: postgres
+      PARTNER_MANAGER_DB_PASSWORD: postgres
+      PARTNER_MANAGER_DB_DBNAME: openg2p_partner_management_db
+      # Key-fetch routes are unauthenticated by design — they return only public
+      # key material and are fail-closed (unknown/disabled/keyless all give 404).
+      PARTNER_MANAGER_AUTH_ENABLED: "false"
+      PARTNER_MANAGER_NO_OF_WORKERS: "2"
+    ports:
+      - "8050:8000"
+    networks:
+      default:
+        aliases:
+          - commons-services-pm-partner-api
+          - partner-management-partner-api
+      openg2p:
+        aliases:
+          - commons-services-pm-partner-api
+          - partner-management-partner-api
+
+  staff-portal-api:
+    build:
+      context: .
+      dockerfile: docker/staff-portal-api/Dockerfile
+      args:
+        FASTAPI_COMMON_REF: "1.2"
+    container_name: pm-staff-portal-api
+    environment:
+      PARTNER_MANAGER_DB_HOSTNAME: postgres
+      PARTNER_MANAGER_DB_PORT: "5432"
+      PARTNER_MANAGER_DB_USERNAME: postgres
+      PARTNER_MANAGER_DB_PASSWORD: postgres
+      PARTNER_MANAGER_DB_DBNAME: openg2p_partner_management_db
+      # Staff-realm Keycloak auth. Issuer must be the string inside the token
+      # (minted via localhost:8080), while JWKS may be fetched over the docker
+      # network — the keys are identical, only `iss` is compared.
+      PARTNER_MANAGER_AUTH_ENABLED: "true"
+      PARTNER_MANAGER_AUTH_DEFAULT_ISSUERS: '["http://localhost:8080/realms/staff"]'
+      PARTNER_MANAGER_AUTH_DEFAULT_JWKS_URLS: '["http://keycloak:8080/realms/staff/protocol/openid-connect/certs"]'
+      PARTNER_MANAGER_AUTH_DEFAULT_AUDIENCES: '[]'
+      PARTNER_MANAGER_AUTH_ADMIN_ROLE: partner_manager
+      PARTNER_MANAGER_AUTH_ADMIN_CLIENT_ID: partner-management
+      PARTNER_MANAGER_NO_OF_WORKERS: "2"
+    extra_hosts:
+      # So `localhost:8080` inside the container reaches Keycloak on the host.
+      - "localhost:host-gateway"
+    ports:
+      - "8051:8000"
+    networks:
+      default:
+        aliases:
+          - commons-services-pm-staff-portal-api
+          - partner-management-staff-portal-api
+      openg2p:
+        aliases:
+          - commons-services-pm-staff-portal-api
+          - partner-management-staff-portal-api
+
+  staff-portal-ui:
+    build:
+      context: .
+      dockerfile: docker/staff-portal-ui/Dockerfile
+    container_name: pm-staff-portal-ui
+    environment:
+      # The UI is a Next.js BFF: /api/login|me|logout talk to the shared IAM
+      # service, /api/pm/* forwards the staff bearer to the staff-portal-api.
+      IAM_URL: http://openg2p-iam-staff-api:8000
+      STAFF_PORTAL_API_URL: http://pm-staff-portal-api:8000
+      KEYCLOAK_LOGOUT_URL: http://localhost:8080/realms/staff/protocol/openid-connect/logout
+      LOGIN_PROVIDER_ID: "1"
+      COOKIE_DOMAIN: localhost
+      REDIRECT_URL: http://localhost:3003
+      PORT: "3000"
+    ports:
+      - "3003:3000"
+    depends_on:
+      - staff-portal-api
+    networks:
+      - default
+      - openg2p
+
+networks:
+  default:
+  openg2p:
+    external: true
+    name: openg2p-developer_default
