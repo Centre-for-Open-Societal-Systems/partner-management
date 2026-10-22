@@ -3,7 +3,7 @@ from datetime import datetime
 
 from openg2p_fastapi_common.context import dbengine
 from openg2p_fastapi_common.service import BaseService
-from sqlalchemy import select
+from sqlalchemy import func, literal, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from ..config import Settings
@@ -95,12 +95,28 @@ class PartnerService(BaseService):
                 select(Partner).where(Partner.partner_id == partner_id)
             )
             partner = res.scalars().first()
+            if partner is None and partner_id.startswith("PARTNER_"):
+                # DCI clients derive this reference from the sender ID. Reuse an
+                # existing partner registered under that original ID, rather
+                # than requiring a second partner and a second copy of its key.
+                reference = literal("PARTNER_") + func.upper(
+                    func.replace(Partner.partner_id, "-", "_")
+                )
+                matches = (
+                    await session.execute(
+                        select(Partner).where(reference == partner_id).limit(2)
+                    )
+                ).scalars().all()
+                # Include inactive partners when detecting collisions: changing
+                # status must never transfer an alias to another identity.
+                if len(matches) == 1:
+                    partner = matches[0]
             if not partner or partner.status != PartnerStatus.active.value:
                 return None
 
             res = await session.execute(
                 select(PartnerKey).where(
-                    PartnerKey.partner_id == partner_id,
+                    PartnerKey.partner_id == partner.partner_id,
                     PartnerKey.status == KeyStatus.active.value,
                 )
             )

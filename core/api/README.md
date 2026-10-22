@@ -42,6 +42,17 @@ Built on [`openg2p-fastapi-common`](https://github.com/openg2p/openg2p-fastapi-c
 Admin APIs require a Keycloak **staff-realm** JWT (forwarded by the IAM
 staff-portal login) carrying the `partner_manager` role.
 
+Key fetch first matches the exact registered partner ID. When no exact partner
+exists, a DCI reference `PARTNER_<SENDER_ID>` can resolve to the existing sender
+ID (uppercased, with hyphens replaced by underscores). For example,
+`PARTNER_LIVE_STOCK_PARTNER_INTERNAL` resolves to `Live_stock_partner_internal`.
+The fallback requires exactly one matching partner, including inactive partners
+in the collision check. Ambiguous references return the same 404 as unavailable
+keys. Exact IDs always take precedence, including disabled partners. Approval,
+key validity, revocation, and `kid` checks apply unchanged; responses retain the
+original registered identity. Admin IDs and stored partner/key records do not
+change.
+
 ## Entrypoints
 
 This one package builds two deployables that share the same models and database
