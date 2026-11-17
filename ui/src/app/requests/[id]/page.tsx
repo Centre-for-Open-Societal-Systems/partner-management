@@ -51,7 +51,7 @@ export default function RequestDetailPage() {
   if (!req) {
     return (
       <div>
-        <BackLink href="/requests" label="Requests" />
+        <BackLink href="/requests" label="Approvals" />
         <ErrorBanner message={error} />
         {!error && <p className="mt-4">Loading…</p>}
       </div>
@@ -62,7 +62,7 @@ export default function RequestDetailPage() {
 
   return (
     <div>
-      <BackLink href="/requests" label="Requests" />
+      <BackLink href="/requests" label="Approvals" />
       <PageHeader
         title={`${labelOf(req.request_type)} — ${req.partner_id}`}
         subtitle={`Filed ${fmtDate(req.created_at)}`}

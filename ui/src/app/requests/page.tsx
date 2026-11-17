@@ -32,13 +32,8 @@ export default function RequestsPage() {
   return (
     <div>
       <PageHeader
-        title="Requests"
-        subtitle="Onboarding, key-rotation and policy requests awaiting review"
-        action={
-          <Link href="/onboard" className="btn-primary">
-            + Onboard partner
-          </Link>
-        }
+        title="Approvals"
+        subtitle="Requests to onboard a partner, change its keys or change its policies, approved or rejected here"
       />
 
       <div className="flex flex-wrap items-center gap-2 mb-4">

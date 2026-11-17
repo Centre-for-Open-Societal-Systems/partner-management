@@ -7,7 +7,7 @@ import { useCatalogue } from "@/lib/catalogue";
 import { keyAlgorithm } from "@/lib/keyAlgorithm";
 import { matchesIdentifier, useMetadata } from "@/lib/metadata";
 import { Partner, PartnerKey, PartnerRequest } from "@/lib/types";
-import { PageHeader, ErrorBanner } from "@/components/ui";
+import { PageHeader, ErrorBanner, BackLink } from "@/components/ui";
 import {
   PolicyEditor,
   PolicyRow,
@@ -148,6 +148,7 @@ function OnboardForm() {
 
   return (
     <div className="max-w-3xl">
+      <BackLink href="/partners" label="Partners" />
       <PageHeader
         title={isUpdate ? "Rotate / add keys" : "Onboard a partner"}
         subtitle={

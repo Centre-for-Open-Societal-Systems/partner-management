@@ -30,23 +30,28 @@ export default function PartnersPage() {
         title="Partners"
         subtitle="Registered partners and their status"
         action={
-          <select
-            className="field-input w-48"
-            aria-label="Partner status"
-            value={status}
-            onChange={(e) => {
-              setLoading(true);
-              setError(null);
-              setStatus(e.target.value);
-            }}
-          >
-            <option value="">All statuses</option>
-            {meta.partner_statuses.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
+          <div className="flex items-center gap-2">
+            <select
+              className="field-input w-48"
+              aria-label="Partner status"
+              value={status}
+              onChange={(e) => {
+                setLoading(true);
+                setError(null);
+                setStatus(e.target.value);
+              }}
+            >
+              <option value="">All statuses</option>
+              {meta.partner_statuses.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+            <Link href="/onboard" className="btn-primary whitespace-nowrap">
+              + Onboard partner
+            </Link>
+          </div>
         }
       />
       <ErrorBanner message={error} />
