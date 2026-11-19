@@ -96,6 +96,9 @@ export interface PolicyInput {
   data_life: string | null;
   // The partner may present consents it collected and signed itself.
   allow_partner_consents: boolean;
+  // The partner may collect consents by assisted confirmation: after the
+  // subject's national-ID login, one 'I agree' tick in the partner portal.
+  allow_assisted_confirmation: boolean;
 }
 
 export interface PartnerPolicy extends PolicyInput {

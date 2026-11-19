@@ -68,6 +68,10 @@ class PartnerPolicy(BaseModelWithId):
     # True = the partner may present consents it collected and signed itself
     # (the Consent Manager then accepts them; it cannot verify the subject agreed).
     allow_partner_consents: Mapped[bool] = mapped_column(Boolean, default=False)
+    # True = the partner may collect consents by assisted confirmation in the
+    # Consent Manager's partner portal: after the subject's national-ID login,
+    # one 'I agree' tick instead of a signed form and a Consent Approver.
+    allow_assisted_confirmation: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # The partner request that proposed this version.
     request_id: Mapped[str] = mapped_column(String(64), index=True)

@@ -134,6 +134,10 @@ class PolicyInput(BaseModel):
     - durations: ISO-8601 (``P30D``, ``P1Y``, ``PT12H``), > 0, or null.
     - ``allow_partner_consents``: true lets the partner present consents it
       collected and signed itself (default false).
+    - ``allow_assisted_confirmation``: true lets the partner collect consents by
+      assisted confirmation in the Consent Manager's partner portal: after the
+      subject's national-ID login, one 'I agree' tick instead of a signed form
+      and a Consent Approver (default false).
     Lists are trimmed, blanks and duplicates dropped.
     """
 
@@ -155,6 +159,9 @@ class PolicyInput(BaseModel):
     data_life: Optional[str] = Field(default=None, examples=["P30D"])
     # True = the partner may present consents it collected and signed itself.
     allow_partner_consents: bool = False
+    # True = the partner may collect consents by assisted confirmation (one
+    # 'I agree' tick after the subject's national-ID login).
+    allow_assisted_confirmation: bool = False
 
     _blank = field_validator("data_controller", "use_case", mode="before")(_blank_key)
 
@@ -265,6 +272,7 @@ class PolicyOut(BaseModel):
     max_fetch_frequency: Optional[str] = None
     data_life: Optional[str] = None
     allow_partner_consents: bool = False
+    allow_assisted_confirmation: bool = False
     effective_from: Optional[datetime] = None
 
 

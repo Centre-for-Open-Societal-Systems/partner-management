@@ -22,6 +22,7 @@ export interface PolicyRow {
   max_fetch_frequency: string;
   data_life: string;
   allow_partner_consents: boolean;
+  allow_assisted_confirmation: boolean;
 }
 
 export const DEFAULT_SIGNING_ALGS = ["EdDSA", "ES256"];
@@ -40,6 +41,7 @@ export const emptyPolicy = (kind: PolicyRow["kind"] = "registry"): PolicyRow => 
   max_fetch_frequency: "",
   data_life: "",
   allow_partner_consents: false,
+  allow_assisted_confirmation: false,
 });
 
 const splitList = (v: string) =>
@@ -63,6 +65,7 @@ export function policyRowFrom(p: PolicyInput): PolicyRow {
     max_fetch_frequency: p.max_fetch_frequency || "",
     data_life: p.data_life || "",
     allow_partner_consents: !!p.allow_partner_consents,
+    allow_assisted_confirmation: !!p.allow_assisted_confirmation,
   };
 }
 
@@ -81,6 +84,7 @@ export function toPolicyInput(r: PolicyRow): PolicyInput {
     max_fetch_frequency: r.max_fetch_frequency.trim() || null,
     data_life: r.data_life.trim() || null,
     allow_partner_consents: r.allow_partner_consents,
+    allow_assisted_confirmation: r.allow_assisted_confirmation,
   };
 }
 
@@ -368,12 +372,26 @@ export function PolicyEditor({
             The Consent Manager cannot verify the farmer agreed; only the partner&apos;s signature.
           </p>
         </div>
+        <div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={row.allow_assisted_confirmation}
+              onChange={(e) => onChange({ allow_assisted_confirmation: e.target.checked })}
+            />
+            May collect consents by assisted confirmation
+          </label>
+          <p className="text-xs mt-1 text-[color:var(--color-text-muted)]">
+            After the subject&apos;s national-ID login, one &apos;I agree&apos; tick in the partner
+            portal instead of a signed form and an approver. The weakest proof.
+          </p>
+        </div>
     </>
   );
   const hasLimits = Boolean(
     row.subject_id_types.trim() || row.max_validity_duration.trim() ||
       row.data_life.trim() || row.max_fetch_frequency.trim() || row.allow_partner_consents ||
-      row.fetch_type !== "oneshot",
+      row.allow_assisted_confirmation || row.fetch_type !== "oneshot",
   );
 
   return (
@@ -619,6 +637,10 @@ export function PolicySummary({ policy }: { policy: PolicyInput }) {
       <div>
         <span className={muted}>Own signed consents: </span>
         {policy.allow_partner_consents ? "accepted" : "not accepted"}
+      </div>
+      <div>
+        <span className={muted}>Assisted confirmation: </span>
+        {policy.allow_assisted_confirmation ? "allowed" : "not allowed"}
       </div>
     </div>
   );

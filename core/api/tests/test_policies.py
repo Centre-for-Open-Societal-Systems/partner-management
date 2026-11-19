@@ -98,6 +98,7 @@ def test_onboarding_activates_policies(client, bank):
     assert farmer["allowed_signing_algs"] == ["EdDSA", "ES256"]
     assert farmer["fetch_type"] == "oneshot"
     assert farmer["allow_partner_consents"] is False
+    assert farmer["allow_assisted_confirmation"] is False
     assert farmer["version"] == 1 and farmer["effective_from"]
     # The version's id, as the staff API lists it.
     staff = client.get(f"/partners/{bank}/policies").json()
@@ -106,7 +107,8 @@ def test_onboarding_activates_policies(client, bank):
         "id", "partner_id", "data_controller", "use_case", "version", "allowed_data_scopes",
         "allowed_purposes", "allowed_subject_id_types",
         "allowed_signing_algs", "max_validity_duration", "fetch_type",
-        "max_fetch_frequency", "data_life", "allow_partner_consents", "effective_from",
+        "max_fetch_frequency", "data_life", "allow_partner_consents",
+        "allow_assisted_confirmation", "effective_from",
     }
 
 
@@ -161,12 +163,20 @@ def test_policy_request_versions_and_supersedes(client, bank):
     r = _policy_request(
         client,
         bank,
-        [_scope_policy(scopes=["farmer.basic"], data_life="P30D", allow_partner_consents=True)],
+        [
+            _scope_policy(
+                scopes=["farmer.basic"],
+                data_life="P30D",
+                allow_partner_consents=True,
+                allow_assisted_confirmation=True,
+            )
+        ],
     )
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["request_type"] == "policy" and body["proposed_policies"][0]["data_life"] == "P30D"
     assert body["proposed_policies"][0]["allow_partner_consents"] is True
+    assert body["proposed_policies"][0]["allow_assisted_confirmation"] is True
     assert _versions(client, bank)[(FARMER, 2)] == "pending"
     # One pending change per (partner, data controller).
     clash = _policy_request(client, bank, [_scope_policy(scopes=["farmer.land"])])
@@ -183,9 +193,12 @@ def test_policy_request_versions_and_supersedes(client, bank):
     p = client.get(f"/policies/{bank}", params={"data_controller": FARMER}).json()["policies"][0]
     assert p["version"] == 2 and p["allowed_data_scopes"] == ["farmer.basic"]
     assert p["allow_partner_consents"] is True
+    assert p["allow_assisted_confirmation"] is True
     # Staff default view: active only.
     active = client.get(f"/partners/{bank}/policies").json()
-    assert next(a for a in active if a["data_controller"] == FARMER)["allow_partner_consents"]
+    farmer_active = next(a for a in active if a["data_controller"] == FARMER)
+    assert farmer_active["allow_partner_consents"]
+    assert farmer_active["allow_assisted_confirmation"]
     assert {(a["data_controller"] or a["use_case"], a["version"]) for a in active} == {
         (FARMER, 2), (LOAN, 1)
     }
@@ -219,7 +232,14 @@ def test_use_case_policies_independent(client, bank):
     loan_v1_id = client.get(f"/policies/{bank}", params={"use_case": LOAN}).json()["policies"][0]["id"]
     # A pending change to one use case blocks only that use case.
     loan = _policy_request(
-        client, bank, [_use_case_policy(LOAN, data_life="P7D", allow_partner_consents=True)]
+        client,
+        bank,
+        [
+            _use_case_policy(
+                LOAN, data_life="P7D", allow_partner_consents=True,
+                allow_assisted_confirmation=True,
+            )
+        ],
     )
     assert loan.status_code == 200, loan.text
     clash = _policy_request(client, bank, [_use_case_policy(LOAN)])
@@ -237,6 +257,7 @@ def test_use_case_policies_independent(client, bank):
     r = client.get(f"/policies/{bank}", params={"use_case": LOAN})
     assert r.json()["policies"][0]["data_life"] == "P7D"
     assert r.json()["policies"][0]["allow_partner_consents"] is True
+    assert r.json()["policies"][0]["allow_assisted_confirmation"] is True
     assert r.json()["policies"][0]["id"] != loan_v1_id  # each version has its own id
     assert client.get(f"/policies/{bank}", params={"use_case": NAME}).status_code == 404
     assert client.get("/policies", params={"use_case": NAME}).json()["count"] == 0
