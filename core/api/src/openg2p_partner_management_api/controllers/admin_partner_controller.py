@@ -7,16 +7,36 @@ from openg2p_fastapi_common.controller import BaseController
 from ..auth import AuthCredentials, PartnerManagerAuth
 from ..config import Settings
 from ..errors import PartnerNotFoundError
-from ..models import PartnerStatus
+from ..models import (
+    IDENTIFIER_HINT,
+    IDENTIFIER_PATTERN,
+    FetchType,
+    KeyStatus,
+    PartnerStatus,
+    PolicyStatus,
+    RequestStatus,
+    RequestType,
+    SigningAlgorithm,
+)
 from ..schemas import (
     AuditEventListResponse,
     AuditEventResponse,
+    CatalogueResponse,
     KeyResponse,
+    MetadataResponse,
     PartnerActionResponse,
     PartnerListResponse,
     PartnerResponse,
+    PolicyResponse,
 )
-from ..services import AuditService, PartnerService
+from ..schemas.policy import allowed_signing_algorithms
+from ..services import (
+    AuditService,
+    CatalogueService,
+    KeyService,
+    PartnerService,
+    PolicyService,
+)
 
 _config = Settings.get_config()
 _logger = logging.getLogger(_config.logging_default_logger_name)
@@ -31,8 +51,23 @@ class AdminPartnerController(BaseController):
         super().__init__(**kwargs)
         self.partners = PartnerService.get_component()
         self.audit = AuditService.get_component()
+        self.keys = KeyService.get_component()
+        self.policies = PolicyService.get_component()
+        self.catalogue = CatalogueService.get_component()
         self.router.tags += ["Admin: Partners"]
 
+        self.router.add_api_route(
+            "/metadata",
+            self.get_metadata,
+            methods=["GET"],
+            responses={200: {"model": MetadataResponse}},
+        )
+        self.router.add_api_route(
+            "/catalogue",
+            self.get_catalogue,
+            methods=["GET"],
+            responses={200: {"model": CatalogueResponse}},
+        )
         self.router.add_api_route(
             "/partners",
             self.list_partners,
@@ -50,6 +85,12 @@ class AdminPartnerController(BaseController):
             self.list_partner_keys,
             methods=["GET"],
             responses={200: {"model": list[KeyResponse]}},
+        )
+        self.router.add_api_route(
+            "/partners/{partner_id}/policies",
+            self.list_partner_policies,
+            methods=["GET"],
+            responses={200: {"model": list[PolicyResponse]}},
         )
         self.router.add_api_route(
             "/partners/{partner_id}/audit",
@@ -70,12 +111,43 @@ class AdminPartnerController(BaseController):
             responses={200: {"model": PartnerActionResponse}},
         )
 
+    async def get_metadata(
+        self,
+        auth: Annotated[AuthCredentials, Depends(_admin_auth)],
+    ) -> MetadataResponse:
+        allowed = self.keys.allowed_algorithms
+        return MetadataResponse(
+            algorithms=[a.value for a in SigningAlgorithm if a.value in allowed],
+            partner_statuses=[s.value for s in PartnerStatus],
+            key_statuses=[s.value for s in KeyStatus],
+            request_types=[t.value for t in RequestType],
+            request_statuses=[s.value for s in RequestStatus],
+            signing_algorithms=allowed_signing_algorithms(),
+            fetch_types=[f.value for f in FetchType],
+            policy_statuses=[s.value for s in PolicyStatus],
+            identifier_pattern=IDENTIFIER_PATTERN,
+            identifier_hint=IDENTIFIER_HINT,
+        )
+
+    async def get_catalogue(
+        self,
+        auth: Annotated[AuthCredentials, Depends(_admin_auth)],
+    ) -> CatalogueResponse:
+        """Choices for policy forms, from the configured catalogue sources.
+
+        One entry per source: a registry's data scopes (``data_controller`` set)
+        or an exchange's use cases. A source that cannot be read has ``error``
+        set and no items (the form falls back to free text). Empty ``sources`` =
+        none configured.
+        """
+        return CatalogueResponse(sources=await self.catalogue.catalogue())
+
     async def list_partners(
         self,
         auth: Annotated[AuthCredentials, Depends(_admin_auth)],
-        status: Optional[str] = None,
+        status: Optional[PartnerStatus] = None,
     ) -> PartnerListResponse:
-        rows = await self.partners.list_partners(status=status)
+        rows = await self.partners.list_partners(status=status.value if status else None)
         return PartnerListResponse(
             count=len(rows),
             partners=[PartnerResponse.model_validate(p) for p in rows],
@@ -98,6 +170,15 @@ class AdminPartnerController(BaseController):
     ) -> list[KeyResponse]:
         rows = await self.partners.list_keys(partner_id)
         return [KeyResponse.model_validate(k) for k in rows]
+
+    async def list_partner_policies(
+        self,
+        partner_id: str,
+        auth: Annotated[AuthCredentials, Depends(_admin_auth)],
+        all_versions: bool = False,
+    ) -> list[PolicyResponse]:
+        rows = await self.policies.list_for_partner(partner_id, all_versions=all_versions)
+        return [PolicyResponse.model_validate(p) for p in rows]
 
     async def partner_audit(
         self,

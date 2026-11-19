@@ -44,23 +44,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const res = await fetch("/api/me", { cache: "no-store" });
         if (res.status === 401) {
-          let body: { errors?: { code?: string; message?: string }[] } = {};
-          try {
-            body = await res.json();
-          } catch {
-            /* ignore */
-          }
-          const err = body?.errors?.[0] || {};
-          const msg = (err.message || "").toLowerCase();
-          if (
-            err.code === "G2P-AUT-LOGIN-REQUIRED" ||
-            msg.includes("expired") ||
-            msg.includes("invalid jwt") ||
-            msg.includes("inactive token")
-          ) {
+          // No session, or one IAM no longer accepts (expired, or a cookie left by
+          // another portal): log in again. IAM reports this in its own envelope
+          // (response_header.response_error_code), the BFF in `errors`; either
+          // way a 401 means "log in". Guard against a loop: if a login just
+          // came back and is still refused, show the error instead.
+          const KEY = "pm-login-attempt";
+          const last = Number(sessionStorage.getItem(KEY) || 0);
+          if (Date.now() - last > 30_000) {
+            sessionStorage.setItem(KEY, String(Date.now()));
             login();
             return;
           }
+          sessionStorage.removeItem(KEY);
           setErrorCode("AUTH_GENERIC_ERROR");
           return;
         }

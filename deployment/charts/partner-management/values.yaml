@@ -131,6 +131,11 @@ keycloakServiceAccountRole:
 # — null the annotations there so this Job runs as a regular resource.
 iamRegister:
   enabled: true
+  # true: run as a Helm post-install/post-upgrade hook (standalone installs).
+  # false: run as a regular resource -- set this in umbrella charts (e.g.
+  # commons-services), where one failing hook stops every later hook and
+  # Rancher may skip hooks. The Job name carries the release revision either way.
+  runAsHook: true
   applicationDescription: "Partner Management"
   image:
     repository: curlimages/curl
@@ -214,6 +219,55 @@ staffPortalApi:
       port: http
     periodSeconds: 20
 
+  # Catalogue sources: where policy forms get their choices (a registry's data
+  # scopes, an exchange's use cases), and what policy requests are checked
+  # against. Empty = free-text scopes / use cases, no checks. Each entry:
+  #   kind: scopes | use_cases
+  #   url: unsigned GET (scopes: <registry partner API>/partner/data_scopes, which
+  #        needs the registry's unsigned catalogue read on; use_cases: the
+  #        Composite's /composite/v1/use-cases)
+  #   data_controller: the policy's data controller (scopes only, required)
+  #   label: shown in the staff UI
+  # May also be a YAML/JSON string (as Rancher's form passes it). Example:
+  # catalogueSources:
+  #   - kind: scopes
+  #     data_controller: farmer_registry
+  #     url: http://farmer-registry-partner-api/partner/data_scopes
+  #     label: Farmer Registry
+  #   - kind: use_cases
+  #     url: http://agri-composite-api/composite/v1/use-cases
+  #     label: Agri Stack Composite
+  catalogueSources: []
+  # Partners onboarded and approved at install (by the actor "bootstrap", an
+  # exception to raising and approving by different people), with their keys
+  # read from jwksUrl when needed and no policy: each data controller adds the
+  # partner's policies itself. So a partner can be onboarded before its JWKS
+  # URL answers, and rotates its keys itself. Existing partners are left as they
+  # are. Values are templated. May also be a YAML/JSON string. Example:
+  # bootstrapPartners:
+  #   - partnerId: PARTNER_AGRI_COMPOSITE
+  #     jwksUrl: https://agri-composite.agrix.example.org/.well-known/jwks.json
+  #     name: Data Sharing Gateway
+  bootstrapPartners: []
+
+  # Per-source fetch timeout (s) and how long a fetched catalogue is reused (s).
+  catalogueFetchTimeout: 3
+  catalogueCacheTtl: 300
+
+  # Master Data code lists offered as policy purposes (registry policies only:
+  # a use-case policy takes none) and subject ID types (POST
+  # {url}/catalogue/get_list_values, with a client-credentials token of
+  # global.authClientId — a service account, not the user's token). With a list
+  # loaded, requests naming other values are rejected; MDS down = accepted with
+  # a warning; a list not in the country's pack = free text. url "" or an empty
+  # list code = free text. Helpful only: nothing at run time depends on it.
+  masterData:
+    url: 'http://commons-services-master-data-api'
+    purposeListCode: CONSENT_PURPOSE
+    subjectIdTypeListCode: SUBJECT_ID_TYPE
+    cacheTtl: 300
+    timeout: 5
+
   envVars:
     PARTNER_MANAGER_OPENAPI_TITLE: OpenG2P Partner Management Staff Portal API
     PARTNER_MANAGER_HOST: 0.0.0.0
@@ -234,12 +288,33 @@ staffPortalApi:
     PARTNER_MANAGER_AUDIT_SOURCE: /openg2p/partner-management-staff-portal-api
     PARTNER_MANAGER_AUDIT_MODULE: partner-management-staff-portal-api
     PARTNER_MANAGER_AUDIT_ANONYMOUS_FAILURES: '{{ .Values.global.auditAnonymousFailures }}'
+    # Cache-Control max-age (seconds) on policy reads (GET /policies...).
+    PARTNER_MANAGER_POLICY_FETCH_CACHE_MAX_AGE: "60"
+    # Catalogue sources (see catalogueSources above), as JSON.
+    PARTNER_MANAGER_CATALOGUE_SOURCES: '{{ include "pm.catalogueSourcesJson" . }}'
+    PARTNER_MANAGER_CATALOGUE_FETCH_TIMEOUT: '{{ .Values.catalogueFetchTimeout }}'
+    # Partners onboarded at install (see bootstrapPartners above), as JSON.
+    PARTNER_MANAGER_BOOTSTRAP_PARTNERS: '{{ include "pm.bootstrapPartnersJson" . }}'
+    PARTNER_MANAGER_CATALOGUE_CACHE_TTL: '{{ .Values.catalogueCacheTtl }}'
+    # Master Data code lists (see masterData above).
+    PARTNER_MANAGER_MDS_URL: '{{ tpl .Values.masterData.url $ }}'
+    PARTNER_MANAGER_MDS_TOKEN_URL: '{{ tpl .Values.global.keycloakIssuerUrl $ }}/protocol/openid-connect/token'
+    PARTNER_MANAGER_MDS_CLIENT_ID: '{{ tpl .Values.global.authClientId $ }}'
+    PARTNER_MANAGER_MDS_PURPOSE_LIST_CODE: '{{ .Values.masterData.purposeListCode }}'
+    PARTNER_MANAGER_MDS_SUBJECT_ID_TYPE_LIST_CODE: '{{ .Values.masterData.subjectIdTypeListCode }}'
+    PARTNER_MANAGER_MDS_CACHE_TTL: '{{ .Values.masterData.cacheTtl }}'
+    PARTNER_MANAGER_MDS_TIMEOUT: '{{ .Values.masterData.timeout }}'
 
   envVarsFrom:
     PARTNER_MANAGER_DB_PASSWORD:
       secretKeyRef:
         name: '{{ tpl .Values.global.pmDBSecret $ }}'
         key: '{{ tpl .Values.global.pmDBUserPasswordKey $ }}'
+    # Client secret for the Master Data token (secret written by keycloak-init).
+    PARTNER_MANAGER_MDS_CLIENT_SECRET:
+      secretKeyRef:
+        name: '{{ tpl .Values.global.authClientSecret $ }}'
+        key: '{{ tpl .Values.global.authClientSecretKey $ }}'
 
   resources: {}
   podLabels: {}
@@ -306,7 +381,7 @@ partnerApi:
     periodSeconds: 20
 
   envVars:
-    PARTNER_MANAGER_OPENAPI_TITLE: OpenG2P Partner Management Key Fetch API
+    PARTNER_MANAGER_OPENAPI_TITLE: OpenG2P Partner Management Key and Policy Fetch API
     PARTNER_MANAGER_HOST: 0.0.0.0
     PARTNER_MANAGER_PORT: '{{ .Values.containerPort }}'
     PARTNER_MANAGER_DB_HOSTNAME: '{{ .Values.global.postgresqlHost }}'
@@ -314,8 +389,11 @@ partnerApi:
     PARTNER_MANAGER_DB_DBNAME: '{{ tpl .Values.global.pmDB $ }}'
     PARTNER_MANAGER_DB_USERNAME: '{{ tpl .Values.global.pmDBUser $ }}'
     PARTNER_MANAGER_CRYPTO_ALLOWED_ALGORITHMS: '["RS256","ES256","EdDSA"]'
-    # Public key-fetch: no caller auth.
+    # Public key- and policy-fetch: no caller auth.
     PARTNER_MANAGER_AUTH_ENABLED: "false"
+    # Cache-Control max-age (seconds) on GET /policies... responses (callers'
+    # policy cache TTL: how fast a narrowed/revoked policy takes effect).
+    PARTNER_MANAGER_POLICY_FETCH_CACHE_MAX_AGE: "60"
 
   envVarsFrom:
     PARTNER_MANAGER_DB_PASSWORD:

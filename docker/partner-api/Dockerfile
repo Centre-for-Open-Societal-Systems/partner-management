@@ -2,7 +2,7 @@
 # Build context = repo root.
 FROM python:3.12-alpine
 
-ARG FASTAPI_COMMON_REF=1.2
+ARG FASTAPI_COMMON_REF=develop
 
 RUN apk add --no-cache --virtual .build-deps gcc libc-dev linux-headers make \
  && apk add --no-cache bash git gettext libpq-dev libffi-dev openssl-dev

@@ -1,6 +1,8 @@
+import asyncio
 import hashlib
 import json
 import logging
+import time
 
 import httpx
 from cryptography.hazmat.primitives import serialization
@@ -48,6 +50,12 @@ class KeyService(BaseService):
     canonical SubjectPublicKeyInfo PEM, and can render a stored key back to a
     JWKS document for the fetch API's ``/.well-known/jwks.json`` view.
     """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Keys read from keys_from_jwks_url partners' URLs: url -> (fetched at, keys).
+        self._live: dict = {}
+        self._live_lock_map: dict = {}
 
     @property
     def allowed_algorithms(self) -> set:
@@ -120,6 +128,59 @@ class KeyService(BaseService):
         if not isinstance(jwks, list) or not jwks:
             raise JwksFetchError(f"No keys found at JWKS endpoint '{jwks_url}'.")
         return [{"jwk": jwk, "kid": jwk.get("kid")} for jwk in jwks]
+
+    async def live_keys(self, jwks_url: str) -> list[dict]:
+        """A keys_from_jwks_url partner's keys, read from its JWKS URL (cached).
+
+        Reused for jwks_live_cache_ttl; while the URL fails, the last good
+        answer is served for up to jwks_live_stale_ttl, then nothing. Keys that
+        would be refused at onboarding (weak, disallowed algorithm, private) are
+        skipped. Returns dicts shaped like stored keys (kid, algorithm,
+        public_key, not_before, not_after).
+        """
+        now = time.monotonic()
+        cache = self._live
+        hit = cache.get(jwks_url)
+        if hit and now - hit[0] < _config.jwks_live_cache_ttl:
+            return hit[1]
+
+        lock = self._live_lock_map.setdefault(jwks_url, asyncio.Lock())
+        async with lock:
+            hit = cache.get(jwks_url)
+            if hit and time.monotonic() - hit[0] < _config.jwks_live_cache_ttl:
+                return hit[1]
+            try:
+                async with httpx.AsyncClient(timeout=_config.jwks_live_fetch_timeout) as client:
+                    resp = await client.get(jwks_url)
+                    resp.raise_for_status()
+                    jwks = resp.json().get("keys")
+                if not isinstance(jwks, list):
+                    raise ValueError("no 'keys' list")
+            except Exception as e:
+                if hit and time.monotonic() - hit[0] < _config.jwks_live_stale_ttl:
+                    _logger.warning("JWKS %s unavailable (%r); serving the last good keys", jwks_url, e)
+                    return hit[1]
+                _logger.warning("JWKS %s unavailable (%r); no keys from it", jwks_url, e)
+                return []
+
+            keys = []
+            for jwk in jwks:
+                try:
+                    nk = self.normalize(jwk=jwk, kid=jwk.get("kid"), algorithm=jwk.get("alg"))
+                except InvalidKeyError as e:
+                    _logger.warning("Skipping key %r from %s: %s", jwk.get("kid"), jwks_url, e)
+                    continue
+                keys.append(
+                    {
+                        "kid": nk.kid,
+                        "algorithm": nk.algorithm,
+                        "public_key": nk.public_key,
+                        "not_before": None,
+                        "not_after": None,
+                    }
+                )
+            cache[jwks_url] = (time.monotonic(), keys)
+            return keys
 
     # --- internals -----------------------------------------------------------
 

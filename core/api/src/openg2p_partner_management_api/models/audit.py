@@ -22,6 +22,10 @@ class AuditAction(str, Enum):
     request_submitted = "request.submitted"
     request_approved = "request.approved"
     request_rejected = "request.rejected"
+    policy_requested = "policy.requested"
+    policy_approved = "policy.approved"
+    policy_rejected = "policy.rejected"
+    policy_revoked = "policy.revoked"
 
 
 class AuditEvent(BaseModelWithId):
@@ -40,7 +44,7 @@ class AuditEvent(BaseModelWithId):
     actor_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     action: Mapped[str] = mapped_column(String(40), index=True)  # AuditAction value
-    entity_type: Mapped[str] = mapped_column(String(32))  # partner | partner_key | partner_request
+    entity_type: Mapped[str] = mapped_column(String(32))  # partner | partner_key | partner_policy | partner_request
     entity_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     # Denormalised so a partner's whole history is one indexed query.
     partner_id: Mapped[str] = mapped_column(String(255), index=True)

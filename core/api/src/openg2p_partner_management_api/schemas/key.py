@@ -1,7 +1,16 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from ..models import IDENTIFIER_PATTERN, SigningAlgorithm
+
+
+def blank_to_none(value):
+    """Treat "" / whitespace as "not supplied" (what older clients sent for auto)."""
+    if isinstance(value, str) and not value.strip():
+        return None
+    return value
 
 
 class KeyInput(BaseModel):
@@ -16,10 +25,17 @@ class KeyInput(BaseModel):
         default=None, description="PEM-encoded public key or X.509 certificate"
     )
     jwk: Optional[dict] = Field(default=None, description="A single public JWK")
-    kid: Optional[str] = Field(default=None, max_length=255)
-    algorithm: Optional[str] = Field(default=None, examples=["RS256", "ES256", "EdDSA"])
+    kid: Optional[str] = Field(default=None, max_length=255, pattern=IDENTIFIER_PATTERN)
+    # Closed set (SigningAlgorithm); omit to infer from the key. The deployment's
+    # crypto_allowed_algorithms may narrow it further (checked in KeyService).
+    algorithm: Optional[SigningAlgorithm] = Field(default=None)
     not_before: Optional[datetime] = None
     not_after: Optional[datetime] = None
+
+    @field_validator("kid", "algorithm", mode="before")
+    @classmethod
+    def _blank_is_omitted(cls, value):
+        return blank_to_none(value)
 
     @model_validator(mode="after")
     def _exactly_one_source(self):
@@ -29,7 +45,10 @@ class KeyInput(BaseModel):
 
 
 class KeyResponse(BaseModel):
-    """Admin view of a stored key (includes lifecycle + fingerprint)."""
+    """Admin view of a stored key (includes lifecycle + fingerprint).
+
+    algorithm / status stay plain strings so legacy rows always load.
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
