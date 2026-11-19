@@ -14,7 +14,7 @@ questions:
   label: Staff Portal API Hostname
   group: General
 - variable: global.partnerApiHostname
-  description: Hostname for the partner-api (unauthenticated key-fetch used by other modules)
+  description: Hostname for the partner-api (unauthenticated key- and policy-fetch used by other modules)
   type: string
   label: Partner API (Key Fetch) Hostname
   group: General
@@ -27,7 +27,7 @@ questions:
   label: Staff Portal API
   group: General
 - variable: partnerApi.enabled
-  description: Install the partner-api (public key-fetch service)
+  description: Install the partner-api (public key- and policy-fetch service)
   type: boolean
   default: true
   label: Partner API
@@ -80,6 +80,52 @@ questions:
   default: partner_manager
   label: Admin Role
   group: Authentication
+
+# ------------------------ Catalogue sources ------------------------
+- variable: staffPortalApi.catalogueSources
+  description: |-
+    Where policy forms get their choices, as a YAML (or JSON) list. Leave empty for free-text scopes and use cases. Each entry: kind (scopes | use_cases), url, label, and for scopes data_controller (the policy's data controller). A scopes url is the registry partner API's /partner/data_scopes and needs that registry's "Allow Unsigned Read of Data Scope Catalogue" on; a use_cases url is the Composite's /composite/v1/use-cases. Example:
+    - kind: scopes
+      data_controller: farmer_registry
+      url: http://farmer-registry-partner-api/partner/data_scopes
+      label: Farmer Registry
+    - kind: use_cases
+      url: http://agri-composite-api/composite/v1/use-cases
+      label: Agri Stack Composite
+  type: multiline
+  default: ""
+  label: Catalogue Sources
+  group: Catalogue Sources
+- variable: staffPortalApi.catalogueCacheTtl
+  description: How long (seconds) a fetched catalogue is reused before it is read again
+  type: int
+  default: 300
+  label: Catalogue Cache TTL (s)
+  group: Catalogue Sources
+- variable: staffPortalApi.catalogueFetchTimeout
+  description: Timeout (seconds) for reading one catalogue source
+  type: int
+  default: 3
+  label: Catalogue Fetch Timeout (s)
+  group: Catalogue Sources
+- variable: staffPortalApi.masterData.url
+  description: Master Data Service (staff API) whose code lists give the policy form's purposes and subject ID types, read with this release's own Keycloak client (service account). With a list loaded, requests naming other values are rejected; if Master Data is unreachable they are accepted with a warning. Leave empty for free text.
+  type: string
+  default: http://commons-services-master-data-api
+  label: Master Data URL
+  group: Catalogue Sources
+- variable: staffPortalApi.masterData.purposeListCode
+  description: Master Data list of consent purposes offered in registry (scope) policies; use-case policies take none. Empty = free text. A list the country's pack does not have also means free text.
+  type: string
+  default: CONSENT_PURPOSE
+  label: Purposes List Code
+  group: Catalogue Sources
+- variable: staffPortalApi.masterData.subjectIdTypeListCode
+  description: Master Data list of subject ID types offered in policies. Empty = free text. A list the country's pack does not have also means free text.
+  type: string
+  default: SUBJECT_ID_TYPE
+  label: Subject ID Types List Code
+  group: Catalogue Sources
 
 # --------------------------- Audit Manager -------------------------
 # The local pm_audit_events ledger is ALWAYS on and independent of these; these

@@ -5,10 +5,10 @@ import { usePathname } from "next/navigation";
 import Image from "next/image";
 import { useAuth } from "@/context/AuthContext";
 
+// Onboarding is a button on Partners; /onboard keeps Partners highlighted.
 const NAV = [
-  { href: "/requests", label: "Requests" },
-  { href: "/partners", label: "Partners" },
-  { href: "/onboard", label: "Onboard partner" },
+  { href: "/partners", label: "Partners", also: ["/onboard"] },
+  { href: "/requests", label: "Approvals", also: [] as string[] },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -38,8 +38,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
         <nav className="flex-1 py-4">
           {NAV.map((item) => {
-            const active =
-              pathname === item.href || pathname.startsWith(item.href + "/");
+            const active = [item.href, ...item.also].some(
+              (h) => pathname === h || pathname.startsWith(h + "/")
+            );
             return (
               <Link
                 key={item.href}

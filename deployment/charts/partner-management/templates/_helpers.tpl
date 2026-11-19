@@ -34,3 +34,38 @@ helpers serves staff-portal-api, partner-api and staff-portal-ui.
 {{- $envVars := merge (deepCopy .Values.envVars) (deepCopy .Values.envVarsFrom) -}}
 {{- include "pm.baseEnvVars" (dict "envVars" $envVars "context" $) }}
 {{- end -}}
+
+{{/*
+staffPortalApi.catalogueSources as compact JSON: a list, or a YAML/JSON string
+(Rancher's multiline form field); empty = []. A ' is written as \u0027 (the env
+value is single-quoted).
+*/}}
+{{/*
+staffPortalApi.bootstrapPartners as compact JSON, as pm.catalogueSourcesJson;
+partnerId, jwksUrl, name and description are templated.
+*/}}
+{{- define "pm.bootstrapPartnersJson" -}}
+{{- $v := .Values.bootstrapPartners | default list -}}
+{{- if kindIs "string" $v -}}
+{{- $v = fromYamlArray $v -}}
+{{- end -}}
+{{- $out := list -}}
+{{- range $v -}}
+{{- $id := tpl (.partnerId | default "") $ | trim -}}
+{{- $url := tpl (.jwksUrl | default "") $ | trim -}}
+{{- /* An entry that renders without a partner ID or URL is skipped (e.g. a
+       conditional default in an umbrella chart). */ -}}
+{{- if and $id $url -}}
+{{- $out = append $out (dict "partner_id" $id "jwks_url" $url "name" (tpl (.name | default "") $) "description" (tpl (.description | default "") $)) -}}
+{{- end -}}
+{{- end -}}
+{{- $out | toJson | replace "'" "\\u0027" -}}
+{{- end -}}
+
+{{- define "pm.catalogueSourcesJson" -}}
+{{- $v := .Values.catalogueSources | default list -}}
+{{- if kindIs "string" $v -}}
+{{- $v = fromYamlArray $v -}}
+{{- end -}}
+{{- $v | toJson | replace "'" "\\u0027" -}}
+{{- end -}}

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from ..config import Settings
 from ..errors import PartnerNotFoundError
 from ..models import AuditAction, KeyStatus, Partner, PartnerKey, PartnerStatus
+from .key_service import KeyService
 
 _config = Settings.get_config()
 _logger = logging.getLogger(_config.logging_default_logger_name)
@@ -88,7 +89,8 @@ class PartnerService(BaseService):
 
         Fail-closed: a missing partner, a non-active partner (created/disabled),
         or a partner with no currently-valid active keys all return None, and the
-        caller maps that to a uniform "not available" response.
+        caller maps that to a uniform "not available" response. For a partner
+        with keys_from_jwks_url, the keys at its JWKS URL are added (cached).
         """
         async with session_maker()() as session:
             res = await session.execute(
@@ -105,6 +107,12 @@ class PartnerService(BaseService):
                 )
             )
             rows = res.scalars().all()
+
+            live = (
+                await KeyService.get_component().live_keys(partner.jwks_url)
+                if partner.keys_from_jwks_url and partner.jwks_url
+                else []
+            )
 
         now = datetime.now()
         keys = []
@@ -123,6 +131,11 @@ class PartnerService(BaseService):
                     "not_after": row.not_after,
                 }
             )
+        # Keys read from the partner's JWKS URL; a stored key with the same kid wins.
+        stored_kids = {k["kid"] for k in keys}
+        keys += [
+            {"partner_id": partner_id, **k} for k in live if k["kid"] not in stored_kids
+        ]
         return keys or None
 
 

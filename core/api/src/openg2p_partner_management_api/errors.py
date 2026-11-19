@@ -20,6 +20,10 @@ class ErrorCodes:
     # Uniform fail-closed response for the public fetch API. Unknown and disabled
     # partners return the same code so callers cannot enumerate partner state.
     keys_not_available = "PM-KEY-404"
+    invalid_policy = "PM-POLICY-400"
+    policy_pending = "PM-POLICY-409"
+    # Same fail-closed rule for the policy-fetch API.
+    policies_not_available = "PM-POLICY-404"
 
 
 class InvalidKeyError(BadRequestError):
@@ -66,4 +70,22 @@ class KeysNotAvailableError(NotFoundError):
         super().__init__(
             code=ErrorCodes.keys_not_available,
             message=f"No keys available for partner '{partner_id}'.",
+        )
+
+
+class InvalidPolicyError(BadRequestError):
+    def __init__(self, message: str):
+        super().__init__(code=ErrorCodes.invalid_policy, message=message)
+
+
+class PolicyPendingError(BadRequestError):
+    def __init__(self, message: str):
+        super().__init__(code=ErrorCodes.policy_pending, message=message)
+
+
+class PoliciesNotAvailableError(NotFoundError):
+    def __init__(self, partner_id: str):
+        super().__init__(
+            code=ErrorCodes.policies_not_available,
+            message=f"No policies available for partner '{partner_id}'.",
         )

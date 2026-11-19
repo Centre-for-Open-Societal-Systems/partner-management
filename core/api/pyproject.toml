@@ -17,6 +17,8 @@ classifiers = [
 ]
 dependencies = [
   "openg2p-fastapi-common",
+  # SQLAlchemy 2.1 no longer installs greenlet, which its asyncio module needs.
+  "sqlalchemy[asyncio] >=2.0,<2.1",
   "cryptography",
   "python-jose",
   "pyjwt",

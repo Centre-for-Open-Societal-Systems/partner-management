@@ -18,6 +18,10 @@ Built on [`openg2p-fastapi-common`](https://github.com/openg2p/openg2p-fastapi-c
 - **Key fetch** — unauthenticated APIs return a partner's active public keys by
   `partner_id` (and optionally `kid`), plus a per-partner JWKS view. Fail-closed:
   unknown/disabled partners get a uniform `404 not available`.
+- **Policies** — what a partner may access, one versioned policy per (partner,
+  data controller) for a registry or per (partner, use case) for an exchange use case.
+  Set at onboarding or by a `policy` request (new versions / revocations), applied
+  on approval. Served fail-closed by `GET /policies/{partner_id}`.
 
 ## APIs
 
@@ -25,6 +29,7 @@ Built on [`openg2p-fastapi-common`](https://github.com/openg2p/openg2p-fastapi-c
 | --- | --- | --- | --- |
 | POST | `/partners/requests/onboarding` | staff | File an onboarding request |
 | POST | `/partners/requests/key-update` | staff | File a key rotation/update request |
+| POST | `/partners/requests/policy` | staff | File a policy change/revocation request |
 | GET | `/partners/requests` | staff | List requests (filter by `status`, `partner_id`) |
 | GET | `/partners/requests/{id}` | staff | Request detail |
 | POST | `/partners/requests/{id}/approve` | staff | Approve (applies keys) |
@@ -32,11 +37,14 @@ Built on [`openg2p-fastapi-common`](https://github.com/openg2p/openg2p-fastapi-c
 | GET | `/partners` | staff | List partners |
 | GET | `/partners/{partner_id}` | staff | Partner detail |
 | GET | `/partners/{partner_id}/keys` | staff | All keys (any status) |
+| GET | `/partners/{partner_id}/policies` | staff | Active policies (`all_versions=true`: history) |
 | POST | `/partners/{partner_id}/disable` | staff | Stop serving keys |
 | POST | `/partners/{partner_id}/enable` | staff | Resume serving keys |
 | GET | `/keys/{partner_id}` | **none** | Active public keys |
 | GET | `/keys/{partner_id}/{kid}` | **none** | One active public key |
 | GET | `/keys/{partner_id}/jwks.json` | **none** | JWKS view |
+| GET | `/policies/{partner_id}` | **none** | Active policies: all, or `?data_controller=` / `?use_case=` |
+| GET | `/policies` | **none** | Active policies of active partners; `?use_case=` and/or `?data_controller=` required |
 | GET | `/ping` | none | Health check |
 
 Admin APIs require a Keycloak **staff-realm** JWT (forwarded by the IAM
@@ -50,7 +58,7 @@ This one package builds two deployables that share the same models and database
 | Entrypoint | Serves | Auth |
 | --- | --- | --- |
 | `openg2p_partner_management_api.staff_portal_main:app` | admin endpoints (`/partners...`) | staff-realm JWT + `partner_manager` role |
-| `openg2p_partner_management_api.partner_main:app` | key-fetch endpoints (`/keys...`) | none (public) |
+| `openg2p_partner_management_api.partner_main:app` | key- and policy-fetch endpoints (`/keys...`, `/policies...`) | none (public) |
 | `openg2p_partner_management_api.main:app` | both (local dev / tests) | as above |
 
 ## Run locally

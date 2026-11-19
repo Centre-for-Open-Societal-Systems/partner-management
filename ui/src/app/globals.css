@@ -133,3 +133,7 @@ button {
   background: rgba(192, 57, 43, 0.12);
   color: var(--color-danger);
 }
+.status-superseded {
+  background: rgba(127, 127, 127, 0.12);
+  color: var(--color-text-muted);
+}
